@@ -3,7 +3,11 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const TOKEN_FILE = 'omlet-coop-tokens.json';
+const TOKEN_FILE = 'omlet-multi-tokens.json';
+// Written by the single-door Omlet Coop plugin. The plugin imports its key on first
+// run, so the settings page reads it too until our own file exists.
+const LEGACY_TOKEN_FILE = 'omlet-coop-tokens.json';
+const PLATFORM_NAME = 'OmletMulti';
 
 class OmletPluginUiServer extends HomebridgePluginUiServer {
   constructor() {
@@ -40,7 +44,7 @@ class OmletPluginUiServer extends HomebridgePluginUiServer {
       const removed = [];
       
       config.platforms.forEach((block) => {
-        if (!block || block.platform !== 'OmletCoop') {
+        if (!block || block.platform !== PLATFORM_NAME) {
           return;
         }
         
@@ -76,11 +80,18 @@ class OmletPluginUiServer extends HomebridgePluginUiServer {
     try {
       const file = this.tokenFilePath();
       
-      if (!fs.existsSync(file)) {
-        return null;
+      if (fs.existsSync(file)) {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
       }
       
-      return JSON.parse(fs.readFileSync(file, 'utf8'));
+      const legacy = path.join(this.homebridgeStoragePath, LEGACY_TOKEN_FILE);
+      
+      if (fs.existsSync(legacy)) {
+        const data = JSON.parse(fs.readFileSync(legacy, 'utf8'));
+        return (data && !data.disconnected && data.bearerToken) ? { bearerToken: data.bearerToken } : null;
+      }
+      
+      return null;
     } catch (error) {
       return null;
     }
@@ -88,7 +99,7 @@ class OmletPluginUiServer extends HomebridgePluginUiServer {
   
   // The credential lives in the Homebridge storage directory, not config.json.
   async handlePersistToken(payload) {
-    const { token, deviceId } = payload || {};
+    const { token } = payload || {};
     
     if (!token) {
       throw new RequestError('Token is required', { status: 400 });
@@ -98,10 +109,6 @@ class OmletPluginUiServer extends HomebridgePluginUiServer {
       bearerToken: token,
       lastUpdated: new Date().toISOString()
     };
-    
-    if (deviceId) {
-      data.deviceId = deviceId;
-    }
     
     try {
       fs.writeFileSync(this.tokenFilePath(), JSON.stringify(data, null, 2));
@@ -404,7 +411,8 @@ class OmletPluginUiServer extends HomebridgePluginUiServer {
                   lightEquipped: Number(device.configuration?.light?.equipped) > 0,
                   powerSource: device.state?.general?.powerSource || null,
                   batteryLevel: device.state?.general?.batteryLevel ?? null,
-                  firmware: device.state?.general?.firmwareVersionCurrent || null
+                  firmware: device.state?.general?.firmwareVersionCurrent || null,
+                  feedLevel: device.state?.feeder?.feedLevel ?? null
                 }));
                 if (debug) {
                   console.log('✓ Devices extracted:', devices.length);

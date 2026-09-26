@@ -1,11 +1,11 @@
 {
-  "name": "homebridge-omlet",
-  "displayName": "Omlet Coop",
-  "version": "0.9.9-beta.1",
-  "description": "The Homebridge Omlet Coop plugin allows for easy control of the Omlet Smart Automatic Chicken Coop Door through HomeKit. Control both the coop door and light with this plugin.",
+  "name": "homebridge-omlet-multi",
+  "displayName": "Omlet Multi",
+  "version": "1.0.0",
+  "description": "Control any number of Omlet Smart Autodoors (with their coop lights) and monitor Omlet Smart Feeders in Apple HomeKit. Fork of homebridge-omlet by cantcodewontcode.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "sh test/run.sh"
   },
   "keywords": [
     "homebridge-plugin",
@@ -13,16 +13,17 @@
     "chicken coop",
     "autodoor",
     "smart coop",
-    "homekit"
+    "homekit",
+    "feeder"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/cantcodewontcode/homebridge-omlet-coop.git"
+    "url": "https://github.com/stevendark-TSD/homebridge-omlet-multi.git"
   },
   "bugs": {
-    "url": "https://github.com/cantcodewontcode/homebridge-omlet-coop/issues"
+    "url": "https://github.com/stevendark-TSD/homebridge-omlet-multi/issues"
   },
-  "homepage": "https://github.com/cantcodewontcode/homebridge-omlet-coop#readme",
+  "homepage": "https://github.com/stevendark-TSD/homebridge-omlet-multi#readme",
   "funding": [
     {
       "type": "paypal",
@@ -37,7 +38,7 @@
     "node": ">=20.0.0",
     "homebridge": ">=1.6.0 || >=2.0.0"
   },
-  "author": "cantcodewontcode",
+  "author": "stevendark-TSD (fork of homebridge-omlet by cantcodewontcode)",
   "license": "Apache-2.0",
   "private": false,
   "dependencies": {

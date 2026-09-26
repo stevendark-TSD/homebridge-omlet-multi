@@ -1,39 +1,50 @@
-# HomeBridge Omlet
+# Homebridge Omlet Multi
 
-Control your Omlet Smart Automatic Chicken Coop Door through Apple HomeKit.
+Control any number of Omlet Smart Autodoors, including their coop lights, and monitor Omlet Smart Feeders from Apple HomeKit.
 
-This Homebridge plugin allows you to control your Omlet coop door and coop light directly from the Apple Home app, Siri, and HomeKit automations.
+This is a fork of [homebridge-omlet](https://github.com/cantcodewontcode/homebridge-omlet-coop) by cantcodewontcode (Bill Spry). That plugin handles one coop door. This version handles every door and feeder on your Omlet account. The door and light control, stuck-state recovery and credential handling are carried over from the original.
 
-## Features
+## What you get in HomeKit
 
-- **Easy Setup**: Custom configuration interface with automatic login and device discovery
-- **Coop Door Control**: Open, close, and monitor your Omlet door (as a garage door) in HomeKit
-- **Light Control**: Turn your coop light on and off (optional, requires Omlet Coop Light module)
-- **Real-time Status**: Automatic polling to keep door and light status up to date
-- **HomeKit Integration**: Full integration with Apple HomeKit scenes and automations
-- **HomeBridge 2.0 compatible**
+Each **coop door** becomes one accessory, named after the door in the Omlet app, with:
+
+- a garage door control for opening and closing, which shows an obstruction when the door reports it is blocked
+- a light, if a Coop Light is fitted to that door
+- a battery level, when the door is running on batteries
+
+Each **feeder** becomes one accessory. Omlet's API cannot control feeders, so everything here is read-only:
+
+- a contact sensor for the feeder door, showing **Open** while the hens can reach the feed, with a fault warning if the feeder reports one
+- **Feed Level**, a percentage. HomeKit has no feed sensor, so this uses a humidity sensor and the Home app shows it with a droplet icon
+- **Feed Low**, an occupancy sensor that triggers when the level drops below the Feed Low Threshold. Use it for a notification or an automation
+- a battery level, when the feeder is running on batteries
+
+Omlet fans are listed in the log but not added yet.
 
 ## Requirements
 
-- Omlet Smart Automatic Chicken Coop Door
-- Omlet Wi-Fi Module
-- Omlet Coop Light (optional, for light integration)
-- Homebridge v1.6.0 or later
+- One or more Omlet Smart Autodoors and/or Smart Feeders, on the Omlet Wi-Fi module
+- Omlet Coop Light (optional)
+- Homebridge v1.6.0 or later (v2 supported)
 - Node.js v20.0.0 or later
 
 ## Installation
 
-### Homebridge web interface
-
-1. Search for **homebridge-omlet** in the Homebridge UI plugin search
-2. Click **Install**
-3. Click **Settings** to configure the plugin
-
-### Command line
+This plugin is not published to npm, so install it from GitHub. Open the Homebridge UI, go to the Terminal (top-right menu; turn on terminal access in Homebridge Settings if you cannot see it), and run:
 
 ```bash
-npm install -g homebridge-omlet
+npm install github:stevendark-TSD/homebridge-omlet-multi#v1.0.0
 ```
+
+Then restart Homebridge. To update, run the same command with the new version tag.
+
+### Switching from the original Omlet Coop plugin
+
+1. Uninstall **Omlet Coop** (`homebridge-omlet`) from the Plugins tab. Running both would mean two plugins controlling the same doors.
+2. Install this plugin as above and restart Homebridge.
+3. Open this plugin's settings. The API key saved by the original plugin is picked up automatically, so you should not need to log in again.
+
+Because this is a different plugin, HomeKit sees your doors as new accessories. After switching, put each one back in its room and reattach any scenes or automations.
 
 ## Configuration
 
@@ -64,7 +75,8 @@ Logging in generates an Omlet API key, which is saved to the Homebridge storage 
 Rarely needed:
 
 - **API Server**: Override the default API server hostname (if ever needed)
-- **Poll Interval**: Reduce how often the plugin checks device status (minimum: 30 seconds)
+- **Poll Interval**: How often coop doors are checked (30 to 300 seconds). Feeders are checked every 5 minutes at most, as their feed level changes slowly
+- **Feed Low Threshold**: The feed level below which a feeder reports Feed Low (default 20%)
 - **Debug Mode**: Enable detailed logging for troubleshooting
 
 ### Where credentials are kept
@@ -85,15 +97,17 @@ If you prefer to edit `config.json` directly:
 {
   "platforms": [
     {
-      "platform": "OmletCoop",
-      "name": "Omlet Coop",
+      "platform": "OmletMulti",
+      "name": "Omlet",
       "email": "YOUR_EMAIL_ADDRESS",
       "password": "YOUR_PASSWORD",
       "countryCode": "US",
       "apiServer": "x107.omlet.co.uk",
       "bearerToken": "YOUR_DEVELOPER_API_KEY",
       "pollInterval": 30,
-      "enableLight": true,
+      "enableLight": "auto",
+      "excludeDevices": [],
+      "feedLowThreshold": 20,
       "debug": false
     }
   ]
@@ -108,25 +122,23 @@ Both are consumed the same way: the plugin uses the credential, saves it to the
 Homebridge storage directory, and removes it from `config.json`. A key you generate
 and a key issued by logging in are the same thing, so both go in `bearerToken`.
 
-Set `enableLight` to `false` if you do not have the Omlet Coop Light module installed.
+Coop lights are detected automatically. Set `enableLight` to `"off"` to hide every light accessory.
 
-### Multiple Devices
+## Multiple devices
 
-Your coop door is found automatically — there is nothing to configure.
+Every coop door and feeder on your Omlet account is found automatically, so there is nothing to configure.
 
-If you have more than one door on your account, the plugin uses the first one it
-finds and lists the others in the Homebridge log at startup. If that is not the door
-you want, please [open an issue](https://github.com/cantcodewontcode/homebridge-omlet-coop/issues)
-and say so.
+- **Adding a device.** A new door or feeder is picked up within the hour, or at once if you restart Homebridge.
+- **Hiding a device.** Untick **Show in HomeKit** next to it in the plugin settings, click Save and restart Homebridge. In `config.json`, add its device ID to `excludeDevices`.
+- **Replacing a device.** Replacement or factory-reset hardware comes back with a new device ID. If exactly one door (or feeder) has gone and exactly one new one has appeared, the existing HomeKit accessory is moved onto the new device, keeping its room and automations. If several have changed at once, the plugin does not guess. The old accessories are removed and the new ones added.
+- **Removing a device.** A device that is no longer on your account is removed from HomeKit the next time Homebridge starts. It is never removed while Homebridge is running, so a brief Omlet outage cannot wipe your setup.
+- If Omlet cannot be reached when Homebridge starts, your devices carry on from the last known setup and discovery keeps retrying every minute.
 
-## Usage
+Every log line for a device starts with its name, for example `[Green Coop] [Door] Opening door`.
 
-After configuration, accessories will appear in your Home app:
+### A note on feeders
 
-1. **Coop Door** - A garage door that controls your coop door
-2. **Coop Light** - A lightbulb that controls your coop light (if enabled)
-
-You can use them fully like any other HomeKit accessory.
+The feeder fields are not in Omlet's published API specification. This plugin uses the field names from Omlet's own TypeScript SDK (`state`, `fault`, `feedLevel`), which other integrations also rely on. Nobody has confirmed that `feedLevel` is always a 0 to 100 percentage, so the first reading from each feeder is written to the log in full. If Feed Level looks wrong, please [open an issue](https://github.com/stevendark-TSD/homebridge-omlet-multi/issues) with that log line.
 
 ## Troubleshooting
 
@@ -145,7 +157,7 @@ You can use them fully like any other HomeKit accessory.
 
 ### Door status not updating
 
-- Check the Poll Interval setting (minimum 30 seconds)
+- Check the Poll Interval setting (minimum 30 seconds; feeders update every 5 minutes)
 - Verify network connectivity between Homebridge and the Omlet API
 - Enable Debug Mode to see polling activity in the logs
 
@@ -160,26 +172,28 @@ saved key stops working.
   at [smart.omlet.com/developers](https://smart.omlet.com/developers) and paste it in
 - Check the Homebridge log for the specific authentication error
 
+## Development
+
+Tests run the plugin against a fake Homebridge, HomeKit and Omlet API, covering several doors and feeders, device replacement, outages and migration from the original plugin. They need no dependencies. On macOS they run on the built-in JavaScriptCore engine if Node is not installed.
+
+```bash
+sh test/run.sh
+```
+
 ## Support
 
-For issues, questions, or feature requests, please [open an issue on GitHub](https://github.com/cantcodewontcode/homebridge-omlet-coop/issues).
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+Please [open an issue on GitHub](https://github.com/stevendark-TSD/homebridge-omlet-multi/issues). For problems that also affect a single door, the [original plugin](https://github.com/cantcodewontcode/homebridge-omlet-coop/issues) may already have an answer.
 
 ## Credits
 
-Developed by Bill Spry
+Originally developed by Bill Spry ([cantcodewontcode](https://github.com/cantcodewontcode)) as homebridge-omlet. Multiple-device and feeder support added in this fork. Thanks to the Homebridge community, and to Omlet for supporting our backyard chickens.
 
-Thanks to the Homebridge community for their excellent documentation and support, and to Omlet for supporting our backyard chickens.
+## Licence
 
-## License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+Apache License 2.0. See [LICENSE](LICENSE). This is a modified version of the original work; the changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Disclaimer
 
 THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 
-The Homebridge Omlet plugin controls your chicken coop door. By using this plugin, you accept sole responsibility for the safety of your flock. Always verify your coop door is functioning correctly and never rely solely on this plugin. This plugin is not affiliated with, endorsed by, or supported by Omlet Ltd.
+This plugin controls your chicken coop doors. By using it, you accept sole responsibility for the safety of your flock. Always check your coop doors are working correctly, and never rely on this plugin alone. This plugin is not affiliated with, endorsed by, or supported by Omlet Ltd.

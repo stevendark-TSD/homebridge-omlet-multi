@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.0.0] - 2026-09-26
+
+First release of **homebridge-omlet-multi**, forked from homebridge-omlet 0.9.9-beta.1. The package name, platform name (`OmletMulti`) and storage file are new, so it can be installed in place of the original.
+
+### Multiple devices
+- Every coop door on the account gets its own HomeKit accessory, named after the door in the Omlet app, each with its own light, battery and obstruction status. There is no longer a limit of one door.
+- New devices are picked up by hourly rediscovery, without a restart.
+- Devices can be hidden from HomeKit (`excludeDevices`, or the **Show in HomeKit** tick box in settings).
+- Replacement hardware keeps its HomeKit accessory only when the match is unambiguous (one gone, one new, same kind). Previously a missing device ID was swapped for any other device on the account, which with two coops meant silently taking over the other coop.
+- Devices no longer on the account are removed at startup only, never mid-run.
+- If Omlet is unreachable at startup, cached devices keep running and discovery retries every minute.
+- Device polls are staggered so several devices do not hit the API at once.
+- Log lines are prefixed with the device name.
+- The manual Device ID setting is removed.
+
+### Feeders
+- Omlet Smart Feeders are supported, read-only: the feeder door (contact sensor), Feed Level (percentage), Feed Low (occupancy sensor, below `feedLowThreshold`, default 20%), fault status and battery.
+- Feeders are polled every 5 minutes at most.
+
+### Migration
+- The API key saved by the original plugin is imported on first run.
+
+### Settings page
+- Lists every door and feeder on the account, with a **Show in HomeKit** tick box on each.
+- Adds the Feed Low Threshold setting.
+- Device names from the Omlet account are shown as plain text rather than inserted as HTML.
+
+### Development
+- Adds `test/run.sh`: scenario tests against a fake Homebridge, HomeKit and Omlet API, with no dependencies.
+
 ## [0.9.9] - 2026-09-22
 
 ### Setup

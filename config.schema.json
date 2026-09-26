@@ -1,16 +1,19 @@
 {
-  "pluginAlias": "OmletCoop",
+  "pluginAlias": "OmletMulti",
   "pluginType": "platform",
   "singular": true,
   "customUi": true,
   "schema": {
     "type": "object",
-    "required": ["name", "countryCode"],
+    "required": [
+      "name",
+      "countryCode"
+    ],
     "properties": {
       "name": {
         "title": "Name",
         "type": "string",
-        "default": "Omlet Coop",
+        "default": "Omlet",
         "description": "Name for this plugin instance"
       },
       "email": {
@@ -28,7 +31,21 @@
         "title": "Country Code",
         "type": "string",
         "default": "US",
-        "enum": ["AU", "DE", "DK", "ES", "FR", "GB", "IE", "IT", "NL", "NO", "PL", "SE", "US"],
+        "enum": [
+          "AU",
+          "DE",
+          "DK",
+          "ES",
+          "FR",
+          "GB",
+          "IE",
+          "IT",
+          "NL",
+          "NO",
+          "PL",
+          "SE",
+          "US"
+        ],
         "description": "Your country"
       },
       "apiServer": {
@@ -41,19 +58,16 @@
         "title": "Connection Method",
         "type": "string",
         "default": "key",
-        "enum": ["key", "account"],
+        "enum": [
+          "key",
+          "account"
+        ],
         "description": "Which setup method the plugin settings page should open on. Set automatically; not used at runtime."
       },
       "bearerToken": {
         "title": "Developer API Key",
         "type": "string",
         "description": "Your Omlet API key. Generate one in the developer console at smart.omlet.com/developers, or leave blank and log in with your email address and password to have one issued for you. Letters, digits, underscores and hyphens, no longer than 128 characters."
-      },
-      "deviceId": {
-        "title": "Device ID",
-        "type": "string",
-        "placeholder": "optional, will be auto-discovered",
-        "description": "Advanced. Not normally needed - your coop door is found automatically."
       },
       "pollInterval": {
         "title": "Poll Interval (seconds)",
@@ -62,6 +76,24 @@
         "minimum": 30,
         "description": "How often to check device status (30-300 seconds)"
       },
+      "excludeDevices": {
+        "title": "Hidden Devices",
+        "type": "array",
+        "items": {
+          "type": "string",
+          "title": "Device ID",
+          "pattern": "^[a-zA-Z0-9]{1,32}$"
+        },
+        "description": "Device IDs to leave out of HomeKit. Every coop door and feeder on your account is added unless listed here."
+      },
+      "feedLowThreshold": {
+        "title": "Feed Low Threshold (%)",
+        "type": "integer",
+        "default": 20,
+        "minimum": 0,
+        "maximum": 100,
+        "description": "Feeders report Feed Low below this level"
+      },
       "debug": {
         "title": "Debug Mode",
         "type": "boolean",
@@ -69,12 +101,22 @@
         "description": "Enable detailed logging for troubleshooting"
       },
       "enableLight": {
-        "title": "Coop Light Accessory",
+        "title": "Coop Light Accessories",
         "type": "string",
         "default": "auto",
         "oneOf": [
-          { "title": "Auto-discover", "enum": ["auto"] },
-          { "title": "Do not display", "enum": ["off"] }
+          {
+            "title": "Auto-discover",
+            "enum": [
+              "auto"
+            ]
+          },
+          {
+            "title": "Do not display",
+            "enum": [
+              "off"
+            ]
+          }
         ]
       },
       "enableBattery": {
@@ -82,9 +124,24 @@
         "type": "string",
         "default": "auto",
         "oneOf": [
-          { "title": "Automatic by power type", "enum": ["auto"] },
-          { "title": "Always show", "enum": ["on"] },
-          { "title": "Always hide", "enum": ["off"] }
+          {
+            "title": "Automatic by power type",
+            "enum": [
+              "auto"
+            ]
+          },
+          {
+            "title": "Always show",
+            "enum": [
+              "on"
+            ]
+          },
+          {
+            "title": "Always hide",
+            "enum": [
+              "off"
+            ]
+          }
         ]
       }
     }
@@ -102,8 +159,9 @@
       "expanded": false,
       "items": [
         "apiServer",
-        "deviceId",
         "pollInterval",
+        "excludeDevices",
+        "feedLowThreshold",
         "enableLight",
         "enableBattery",
         "debug"
