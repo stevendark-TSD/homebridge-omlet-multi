@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.1] - 2026-09-26
+
+- Clearer feeder log lines. The startup line now says "Feed Low alert threshold" rather than "feed low below", which read like a current status, and the first reading states the feed level and door state before the full data.
+- README: feed level confirmed as a 0 to 100 percentage matching the Omlet app.
+
 ## [1.0.0] - 2026-09-26
 
 First release of **homebridge-omlet-multi**, forked from homebridge-omlet 0.9.9-beta.1. The package name, platform name (`OmletMulti`) and storage file are new, so it can be installed in place of the original.

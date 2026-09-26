@@ -2525,7 +2525,7 @@ class FeederAccessory extends OmletDevice {
     this.applyFeedServices(this.hasFeedServices());
     this.applyBatteryService(platform.enableBattery === 'auto' ? this.hasBatteryService() : platform.enableBattery);
     
-    this.log.info(`Feeder initialized (feed low below ${platform.feedLowThreshold}%, battery: ${this.describePref(platform.enableBattery)})`);
+    this.log.info(`Feeder initialized (Feed Low alert threshold: ${platform.feedLowThreshold}%, battery: ${this.describePref(platform.enableBattery)})`);
     
     this.startPolling(startDelay);
   }
@@ -2669,7 +2669,10 @@ class FeederAccessory extends OmletDevice {
     
     if (!this.stateLogged) {
       this.stateLogged = true;
-      this.log.info('[Feeder] Reported state:', JSON.stringify(status.state?.feeder ?? null));
+      const level = this.feedLevel(status);
+      const door = status.state?.feeder?.state || 'unknown';
+      this.log.info(`[Feeder] Feed level ${level === null ? 'unknown' : level + '%'}, door ${door}. Full state:`,
+        JSON.stringify(status.state?.feeder ?? null));
     }
     
     this.reconcileServices(status);

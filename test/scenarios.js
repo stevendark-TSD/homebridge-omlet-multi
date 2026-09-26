@@ -22,7 +22,8 @@ async function main() {
   check(await read(f, 'OccupancySensor', 'OccupancyDetected') === 0, 'feed not low at 55%');
   check(await read(f, 'ContactSensor', 'ContactSensorState') === 0, 'feeder door closed');
   check(!!svc(f, 'Battery'), 'feeder battery shown');
-  check(logHas(/\[Big Feeder\] \[Feeder\] Reported state:.*feedLevel/), 'first feeder state logged in full');
+  check(logHas(/\[Big Feeder\] \[Feeder\] Feed level 55%, door closed\. Full state:.*feedLevel/), 'first feeder reading logged with level, door and full state');
+  check(logHas(/Feeder initialized \(Feed Low alert threshold: 20%/), 'startup line names the threshold as a threshold');
   var polled = cloud.requests.filter(function (r) { return /^GET \/api\/v1\/device\//.test(r); });
   check(polled.some(function (r) { return /DOOR1$/.test(r); }) && polled.some(function (r) { return /DOOR2$/.test(r); }) && polled.some(function (r) { return /FEED1$/.test(r); }), 'each device polled on its own ID');
   check(files['/hb/omlet-multi-tokens.json'] && JSON.parse(files['/hb/omlet-multi-tokens.json']).bearerToken === 'good_token', 'token saved to our own storage file');
