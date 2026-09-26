@@ -2493,9 +2493,9 @@ class AutodoorAccessory extends OmletDevice {
 //   Battery          on the same auto rules as the doors
 //
 // The feeder section is not in Omlet's published API spec. Field names come from
-// Omlet's own TypeScript SDK (state, fault, feedLevel, lightLevel, mode); what
-// feedLevel's scale is has not been confirmed on real hardware, so the first
-// reading is logged in full.
+// Omlet's own TypeScript SDK (state, fault, feedLevel, lightLevel, mode).
+// feedLevel is a 0-100 percentage, confirmed against the Omlet app on a real
+// feeder. The first reading is still logged in full, as a diagnostic.
 class FeederAccessory extends OmletDevice {
   constructor(platform, accessory, device, startDelay = 0) {
     super(platform, accessory, device, KIND_FEEDER, 'Smart Feeder');

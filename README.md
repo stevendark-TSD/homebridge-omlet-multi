@@ -138,7 +138,7 @@ Every log line for a device starts with its name, for example `[Green Coop] [Doo
 
 ### A note on feeders
 
-The feeder fields are not in Omlet's published API specification. This plugin uses the field names from Omlet's own TypeScript SDK (`state`, `fault`, `feedLevel`), which other integrations also rely on. Nobody has confirmed that `feedLevel` is always a 0 to 100 percentage, so the first reading from each feeder is written to the log in full. If Feed Level looks wrong, please [open an issue](https://github.com/stevendark-TSD/homebridge-omlet-multi/issues) with that log line.
+The feeder fields are not in Omlet's published API specification. This plugin uses the field names from Omlet's own TypeScript SDK (`state`, `fault`, `feedLevel`), which other integrations also rely on. On a real feeder, `feedLevel` is a 0 to 100 percentage that matches the level shown in the Omlet app. The first reading from each feeder is still written to the log in full, so if Feed Level ever looks wrong, please [open an issue](https://github.com/stevendark-TSD/homebridge-omlet-multi/issues) with that log line.
 
 ## Troubleshooting
 
