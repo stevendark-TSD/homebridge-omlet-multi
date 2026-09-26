@@ -1,9 +1,15 @@
 <style>
+  /* The card is a light panel whatever the Homebridge theme. Without an explicit
+     text colour it inherits the dark theme's white text: white on white. */
   .card {
     padding: 20px;
     background: #fff;
+    color: #212529;
     border-radius: 8px;
     margin-bottom: 20px;
+  }
+  .card h3, .card h4, .card label, .card p, .card strong {
+    color: inherit;
   }
   .form-group {
     margin-bottom: 15px;
@@ -33,10 +39,16 @@
   }
   .form-control {
     width: 100%;
+    box-sizing: border-box;
     padding: 8px 12px;
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 14px;
+    background: #fff;
+    color: #212529;
+  }
+  .form-control::placeholder {
+    color: #6c757d;
   }
   .btn {
     padding: 10px 20px;

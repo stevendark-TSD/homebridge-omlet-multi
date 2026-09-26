@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.2] - 2026-09-26
+
+- Settings page is readable with the Homebridge dark theme. Its light panels inherited the theme's white text, so most of the page was white on white.
+- Text boxes no longer overflow their panel.
+
 ## [1.0.1] - 2026-09-26
 
 - Clearer feeder log lines. The startup line now says "Feed Low alert threshold" rather than "feed low below", which read like a current status, and the first reading states the feed level and door state before the full data.
