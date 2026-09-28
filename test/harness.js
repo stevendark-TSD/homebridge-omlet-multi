@@ -212,5 +212,7 @@ function check(cond, msg) { if (cond) { passes++; out('  ok   ' + msg); } else {
 function svc(acc, type) { return acc.getService(hap.Service[type]); }
 function val(acc, type, ch) { var s = svc(acc, type); return s && s.getCharacteristic(hap.Characteristic[ch]).value; }
 async function read(acc, type, ch) { var s = svc(acc, type); var c = s.getCharacteristic(hap.Characteristic[ch]); try { return await c.getter(); } catch (e) { return 'ERR:' + e.message; } }
+function devs() { return registry.filter(function (a) { return !(a.context && a.context.role); }); }
+function level(n) { return byName(n + ' Feed Level'); }
 function byName(n) { return registry.filter(function (a) { return a.displayName === n; })[0]; }
 function logHas(re) { return logs.some(function (l) { return re.test(l); }); }

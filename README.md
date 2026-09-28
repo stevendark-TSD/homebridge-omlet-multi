@@ -13,7 +13,7 @@ Each **coop door** becomes one accessory, named after the door in the Omlet app,
 - a battery level, when the door is running on batteries
 - a light level sensor, showing the light level the door opens and closes by
 
-Each **feeder** becomes one accessory. Omlet's API cannot control feeders, so everything here is read-only:
+Each **feeder** becomes one accessory, plus a separate **Feed Level** accessory (see below). Omlet's API cannot control feeders, so everything here is read-only:
 
 - a contact sensor for the feeder door, showing **Open** while the hens can reach the feed, with a fault warning if the feeder reports one
 - **Feed Level**, a percentage. HomeKit has no feed sensor, so you choose how it is shown (see below)
@@ -23,7 +23,11 @@ Each **feeder** becomes one accessory. Omlet's API cannot control feeders, so ev
 
 ### How Feed Level is shown
 
-Apple does not allow new tile types in the Home app, so the feed level has to borrow an existing one. Pick the trade-off that suits you under **Feed Level Display**:
+Apple does not allow new tile types in the Home app, so the feed level has to borrow an existing one.
+
+In the humidity and light bulb modes, the level is published as its own accessory, named after the feeder (for example "Scoops Ahoy Feed Level"). The Home app merges all of an accessory's services into one tile, so on the feeder itself the level would only be visible after opening it. As a separate accessory with a single service, it always gets its own tile, which you can put in any room or add to Favourites. It is removed along with its feeder.
+
+Pick the trade-off that suits you under **Feed Level Display**:
 
 | Option | In the Home app | Catch |
 | --- | --- | --- |

@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.0] - 2026-09-28
+
+- Feed Level is now its own accessory ("<feeder> Feed Level") in the humidity and light bulb modes, so it always gets its own tile. On the feeder it was merged into the feeder's tile by the Home app and only visible after opening it. It follows its feeder through restarts, exclusion, removal and hardware replacement.
+- Upgrading from 1.1.0 moves the level off the feeder automatically. The new tile appears in the default room; move it where you want it.
+
 ## [1.1.0] - 2026-09-28
 
 ### Feeders

@@ -1,4 +1,4 @@
-/* global boot, advance, flush, cloud, addDevice, door, feeder, registry, files, check, svc, val, read, byName, logHas, logs, out, failures, passes, hap */
+/* global devs, level, boot, advance, flush, cloud, addDevice, door, feeder, registry, files, check, svc, val, read, byName, logHas, logs, out, failures, passes, hap */
 
 async function main() {
   var CFG = { name: 'Omlet', bearerToken: 'good_token', countryCode: 'GB' };
@@ -10,7 +10,7 @@ async function main() {
   cloud.devices.FAN1 = { deviceId: 'FAN1', name: 'Coop Fan', deviceType: 'Fan', state: {} };
   var b = await boot(CFG);
   await advance(10000);
-  check(registry.length === 3, 'three accessories registered (fan skipped), got ' + registry.length);
+  check(devs().length === 3, 'three devices registered (fan skipped), got ' + devs().length);
   check(logHas(/Skipping "Coop Fan".*not supported/), 'fan logged as unsupported');
   var g = byName('Green Coop'), bl = byName('Blue Coop'), f = byName('Big Feeder');
   check(g && bl && f, 'accessories named after the Omlet devices');
@@ -18,7 +18,10 @@ async function main() {
   check(!!svc(g, 'Lightbulb') && !svc(bl, 'Lightbulb'), 'light only on the door that has one');
   check(!!svc(g, 'Battery') && !svc(bl, 'Battery'), 'battery only on the battery-powered door');
   check(val(g, 'GarageDoorOpener', 'CurrentDoorState') === 1, 'Green Coop reports closed');
-  check(await read(f, 'HumiditySensor', 'CurrentRelativeHumidity') === 55, 'feed level 55%');
+  check(!svc(f, 'HumiditySensor') && !!level('Big Feeder'), 'feed level is its own accessory, not on the feeder');
+  check(level('Big Feeder').services.length === 2 && !!svc(level('Big Feeder'), 'HumiditySensor'), 'feed level accessory has one service (plus info), so Home cannot group it');
+  check(await read(level('Big Feeder'), 'HumiditySensor', 'CurrentRelativeHumidity') === 55, 'feed level 55%');
+  check(registry.length === 4, 'four accessories including the feed level tile');
   check(await read(f, 'OccupancySensor', 'OccupancyDetected') === 0, 'feed not low at 55%');
   check(await read(f, 'ContactSensor', 'ContactSensorState') === 0, 'feeder door closed');
   check(!!svc(f, 'Battery'), 'feeder battery shown');
@@ -43,7 +46,7 @@ async function main() {
   out('3. Feed runs low');
   cloud.devices.FEED1.state.feeder.feedLevel = 12;
   await advance(5 * 60 * 1000);
-  check(val(f, 'HumiditySensor', 'CurrentRelativeHumidity') === 12, 'feed level updated to 12%');
+  check(val(level('Big Feeder'), 'HumiditySensor', 'CurrentRelativeHumidity') === 12, 'feed level updated to 12%');
   check(val(f, 'OccupancySensor', 'OccupancyDetected') === 1, 'Feed Low triggered below 20%');
   var feederPolls = cloud.requests.filter(function (r) { return r === 'GET /api/v1/device/FEED1'; }).length;
   check(feederPolls <= 2, 'feeder polled no more than every 5 minutes (' + feederPolls + ' polls in ~6 min)');
@@ -51,13 +54,13 @@ async function main() {
   out('4. A third door is added while running');
   addDevice(door('DOOR3', 'New Coop', { light: true }));
   await advance(60 * 60 * 1000);
-  check(!!byName('New Coop') && registry.length === 4, 'picked up by hourly rediscovery without restart');
+  check(!!byName('New Coop') && devs().length === 4, 'picked up by hourly rediscovery without restart');
 
   out('5. Restart: accessories restored from cache, not duplicated');
   b.platform.handlers.forEach(function (h) { h.stop(); });
   b = await boot(CFG);
   await advance(15000);
-  check(registry.length === 4, 'still four accessories, got ' + registry.length);
+  check(devs().length === 4, 'still four accessories, got ' + devs().length);
   check(b.platform.handlers.size === 4, 'four handlers running');
   check(logHas(/Using saved API key/), 'used the stored key after config.json was cleaned');
 
@@ -68,7 +71,7 @@ async function main() {
   var blueBefore = byName('Blue Coop');
   b = await boot(CFG);
   await advance(15000);
-  check(registry.length === 4, 'no accessory added or lost, got ' + registry.length);
+  check(devs().length === 4, 'no accessory added or lost, got ' + devs().length);
   check(byName('Blue Coop') === blueBefore && blueBefore.context.deviceId === 'DOOR2B', 'same HomeKit accessory now on DOOR2B');
   check(logHas(/has been replaced by "Blue Coop" \(DOOR2B\)/), 'swap logged');
 
@@ -80,13 +83,13 @@ async function main() {
   await advance(15000);
   check(!byName('Green Coop') && !byName('New Coop'), 'old accessories removed');
   check(!!byName('Green Coop 2') && !!byName('New Coop 2'), 'new accessories added');
-  check(registry.length === 4, 'four accessories, got ' + registry.length);
+  check(devs().length === 4, 'four accessories, got ' + devs().length);
 
   out('8. Excluding a device');
   b.platform.handlers.forEach(function (h) { h.stop(); });
   b = await boot(Object.assign({}, CFG, { excludeDevices: ['DOOR3B'] }));
   await advance(15000);
-  check(!byName('New Coop 2') && registry.length === 3, 'excluded door removed from HomeKit');
+  check(!byName('New Coop 2') && devs().length === 3, 'excluded door removed from HomeKit');
   check(logHas(/Skipping "New Coop 2".*excluded/), 'exclusion logged');
 
   out('9. Omlet unreachable at startup');
@@ -98,12 +101,12 @@ async function main() {
   await advance(15000);
   check(cloud.requests.indexOf('GET /api/v1/device/DOOR2B') >= 0, 'cached door polled while discovery is down');
   check(b.platform.handlers.size === 3, 'cached devices started anyway (' + b.platform.handlers.size + ')');
-  check(registry.length === 3, 'nothing removed while discovery is failing');
+  check(devs().length === 3, 'nothing removed while discovery is failing');
   check(val(byName('Blue Coop'), 'GarageDoorOpener', 'CurrentDoorState') === 1, 'cached door still polled and reporting');
   cloud.failDiscovery = false;
   await advance(61000);
   check(logHas(/Found an API key|Using saved API key/) && b.platform.initialSyncDone, 'discovery retried and succeeded');
-  check(!byName('New Coop 2') && registry.length === 3, 'still honours exclusion after recovery');
+  check(!byName('New Coop 2') && devs().length === 3, 'still honours exclusion after recovery');
 
   out('10. Door replaced while running (404 on poll)');
   delete cloud.devices['DOOR1B'];
@@ -121,7 +124,7 @@ async function main() {
   b = await boot({ name: 'Omlet', countryCode: 'GB' });
   await advance(15000);
   check(logHas(/Found an API key saved by the Omlet Coop plugin/), 'legacy key imported');
-  check(registry.length === 4, 'all four devices set up from the imported key, got ' + registry.length);
+  check(devs().length === 4, 'all four devices set up from the imported key, got ' + devs().length);
   check(JSON.parse(files['/hb/omlet-multi-tokens.json']).bearerToken === 'good_token', 'imported key saved to our storage once it worked');
 
 
@@ -170,23 +173,25 @@ async function main() {
   b = await boot(Object.assign({}, CFG, { feedLevelDisplay: 'lightbulb' }));
   await advance(15000);
   var sc = byName('Scoops');
-  check(!!svc(sc, 'Lightbulb') && !svc(sc, 'HumiditySensor'), 'light bulb instead of humidity sensor');
+  var scl = level('Scoops');
+  check(!!svc(scl, 'Lightbulb') && !svc(scl, 'HumiditySensor') && !svc(sc, 'Lightbulb'), 'feed level tile is a light bulb, on its own accessory');
+  check(svc(scl, 'Lightbulb').primary === true, 'bulb is the primary service');
   check(!!svc(sc, 'OccupancySensor'), 'Feed Low still present');
-  check(val(sc, 'Lightbulb', 'Brightness') === 64 && val(sc, 'Lightbulb', 'On') === true, 'bulb on at 64% brightness');
-  check(await read(sc, 'Lightbulb', 'Brightness') === 64, 'brightness read returns the feed level');
-  var bulb = svc(sc, 'Lightbulb');
+  check(val(scl, 'Lightbulb', 'Brightness') === 64 && val(scl, 'Lightbulb', 'On') === true, 'bulb on at 64% brightness');
+  check(await read(scl, 'Lightbulb', 'Brightness') === 64, 'brightness read returns the feed level');
+  var bulb = svc(scl, 'Lightbulb');
   bulb.getCharacteristic(hap.Characteristic.On).value = false;
   await bulb.getCharacteristic(hap.Characteristic.On).setter(false);
   await advance(1000);
-  check(val(sc, 'Lightbulb', 'On') === true, 'switching it off is reverted');
+  check(val(scl, 'Lightbulb', 'On') === true, 'switching it off is reverted');
   bulb.getCharacteristic(hap.Characteristic.Brightness).value = 10;
   await bulb.getCharacteristic(hap.Characteristic.Brightness).setter(10);
   await advance(1000);
-  check(val(sc, 'Lightbulb', 'Brightness') === 64, 'dragging the brightness is reverted');
+  check(val(scl, 'Lightbulb', 'Brightness') === 64, 'dragging the brightness is reverted');
   check(cloud.requests.every(function (r) { return !/FEEDB\/action/.test(r); }), 'nothing is ever sent to the feeder');
   cloud.devices.FEEDB.state.feeder.feedLevel = 0;
   await advance(5 * 60 * 1000);
-  check(val(sc, 'Lightbulb', 'On') === false && val(sc, 'Occupancy' + 'Sensor', 'OccupancyDetected') === 1, 'empty feeder: bulb off and Feed Low triggered');
+  check(val(scl, 'Lightbulb', 'On') === false && val(sc, 'Occupancy' + 'Sensor', 'OccupancyDetected') === 1, 'empty feeder: bulb off and Feed Low triggered');
 
   out('15. Switching display mode on a cached feeder');
   cloud.devices.FEEDB.state.feeder.feedLevel = 40;
@@ -194,16 +199,16 @@ async function main() {
   b = await boot(Object.assign({}, CFG, { feedLevelDisplay: 'off' }));
   await advance(15000);
   check(byName('Scoops') === sc, 'same accessory kept');
-  check(!svc(sc, 'Lightbulb') && !svc(sc, 'HumiditySensor') && !!svc(sc, 'OccupancySensor'), 'off: no level tile, Feed Low kept');
-  check(b.api.updates > 0, 'service change published to HomeKit');
+  check(!level('Scoops') && !!svc(sc, 'OccupancySensor'), 'off: feed level accessory removed, Feed Low kept');
+  check(registry.every(function (a) { return !(a.context && a.context.role); }), 'feed level tile unregistered from HomeKit');
   b.platform.handlers.forEach(function (h) { h.stop(); });
   b = await boot(CFG);
   await advance(15000);
-  check(!!svc(sc, 'HumiditySensor') && !svc(sc, 'Lightbulb') && val(sc, 'HumiditySensor', 'CurrentRelativeHumidity') === 40, 'default: back to humidity at 40%');
+  check(!!level('Scoops') && !!svc(level('Scoops'), 'HumiditySensor') && !svc(level('Scoops'), 'Lightbulb') && val(level('Scoops'), 'HumiditySensor', 'CurrentRelativeHumidity') === 40, 'default: feed level tile back, as humidity at 40%');
   b.platform.handlers.forEach(function (h) { h.stop(); });
   b = await boot(Object.assign({}, CFG, { feedLevelDisplay: 'banana' }));
   await advance(15000);
-  check(logHas(/Invalid feedLevelDisplay "banana", using "humidity"/) && !!svc(sc, 'HumiditySensor'), 'invalid setting falls back to humidity');
+  check(logHas(/Invalid feedLevelDisplay "banana", using "humidity"/) && !!svc(level('Scoops'), 'HumiditySensor'), 'invalid setting falls back to humidity');
 
   out('16. Light level sensors');
   b.platform.handlers.forEach(function (h) { h.stop(); });
@@ -231,7 +236,7 @@ async function main() {
   b.platform.handlers.forEach(function (h) { h.stop(); });
   b = await boot(Object.assign({}, CFG, { feedLevelDisplay: 'battery' }));
   await advance(15000);
-  check(!!svc(lf, 'Battery') && !svc(lf, 'HumiditySensor') && !svc(lf, 'Lightbulb'), 'battery tile, no humidity or bulb');
+  check(!!svc(lf, 'Battery') && !level('Lit Feeder'), 'battery mode: level on the feeder battery, no separate tile');
   check(val(lf, 'Battery', 'BatteryLevel') === 30 && val(lf, 'Battery', 'Name') === 'Lit Feeder Feed Level', 'battery tile shows feed level 30%, named Feed Level');
   check(await read(lf, 'Battery', 'BatteryLevel') === 30, 'battery read returns feed level');
   cloud.devices.LF1.state.feeder.feedLevel = 15;
@@ -245,7 +250,48 @@ async function main() {
   b = await boot(CFG);
   await advance(15000);
   check(val(lf, 'Battery', 'BatteryLevel') === 64 && val(lf, 'Battery', 'Name') === 'Lit Feeder Battery', 'back to humidity mode: battery tile shows the real battery again');
-  check(!!svc(lf, 'HumiditySensor'), 'humidity sensor back');
+  check(!!level('Lit Feeder'), 'feed level tile back');
+
+  out('18. Feed level tile follows its feeder');
+  b.platform.handlers.forEach(function (h) { h.stop(); });
+  Object.keys(files).forEach(function (k) { delete files[k]; });
+  registry.length = 0; cloud.devices = {};
+  addDevice(feeder('CF1', 'Front Feeder', 70)); addDevice(feeder('CF2', 'Back Feeder', 30));
+  b = await boot(CFG);
+  await advance(15000);
+  check(!!level('Front Feeder') && !!level('Back Feeder') && registry.length === 4, 'each feeder gets its own level tile');
+  check(val(level('Front Feeder'), 'HumiditySensor', 'CurrentRelativeHumidity') === 70 && val(level('Back Feeder'), 'HumiditySensor', 'CurrentRelativeHumidity') === 30, 'each tile shows its own feeder');
+  b.platform.handlers.forEach(function (h) { h.stop(); });
+  b = await boot(CFG);
+  await advance(15000);
+  check(registry.length === 4, 'restart: no duplicate level tiles, got ' + registry.length);
+  check(await read(level('Front Feeder'), 'HumiditySensor', 'CurrentRelativeHumidity') === 70, 'restored tile still reads live');
+  b.platform.handlers.forEach(function (h) { h.stop(); });
+  b = await boot(Object.assign({}, CFG, { excludeDevices: ['CF2'] }));
+  await advance(15000);
+  check(!byName('Back Feeder') && !level('Back Feeder') && registry.length === 2, 'excluding a feeder removes its level tile too');
+  b.platform.handlers.forEach(function (h) { h.stop(); });
+  delete cloud.devices.CF1; addDevice(feeder('CF1B', 'Front Feeder', 55));
+  var frontLevel = level('Front Feeder');
+  b = await boot(Object.assign({}, CFG, { excludeDevices: ['CF2'] }));
+  await advance(15000);
+  check(level('Front Feeder') === frontLevel && val(frontLevel, 'HumiditySensor', 'CurrentRelativeHumidity') === 55, 'replaced feeder keeps its level tile, now reading the new device');
+  check(registry.length === 2, 'still two accessories, got ' + registry.length);
+  b.platform.handlers.forEach(function (h) { h.stop(); });
+  cloud.failDiscovery = true;
+  b = await boot(Object.assign({}, CFG, { excludeDevices: ['CF2'] }));
+  await advance(15000);
+  check(!!level('Front Feeder') && registry.length === 2, 'Omlet unreachable: level tile kept');
+  cloud.failDiscovery = false;
+
+  out('19. Upgrading from 1.1.0 (level services on the feeder)');
+  b.platform.handlers.forEach(function (h) { h.stop(); });
+  var ff = byName('Front Feeder');
+  registry = registry.filter(function (a) { return !(a.context && a.context.role); });
+  var old = ff.addService(hap.Service.Lightbulb, 'Front Feeder Feed Level');
+  b = await boot(Object.assign({}, CFG, { excludeDevices: ['CF2'], feedLevelDisplay: 'lightbulb' }));
+  await advance(15000);
+  check(!svc(ff, 'Lightbulb') && !!svc(level('Front Feeder'), 'Lightbulb'), 'old bulb removed from the feeder, new one on its own tile');
 
   out('');
   out(passes + ' passed, ' + failures + ' failed');

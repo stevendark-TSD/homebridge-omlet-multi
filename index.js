@@ -68,6 +68,16 @@ const DEFAULT_FEED_LOW_THRESHOLD = 20;
 // shown; off leaves only Feed Low.
 const FEED_LEVEL_DISPLAYS = ['humidity', 'lightbulb', 'battery', 'off'];
 const LIGHTBULB_REVERT_MS = 500;
+// The Home app merges every service on an accessory into one tile led by the
+// primary service, so a feed level living on the feeder is only visible after
+// opening it. It is published as a companion accessory of its own instead, marked
+// by this role in its context and tied to its feeder by the feeder's UUID (which,
+// unlike the device ID, survives a hardware swap).
+const ROLE_FEED_LEVEL = 'feedLevel';
+
+function isCompanion(accessory) {
+  return !!(accessory.context && accessory.context.role);
+}
 
 const SERVICE_LABELS = { light: 'Coop light', battery: 'Battery', feed: 'Feed level', lightLevel: 'Light level sensor' };
 // HomeKit's light sensor takes lux from 0.0001 upwards. Omlet's lightLevel is its
@@ -1032,7 +1042,7 @@ class OmletCoopPlatform {
       }
     });
     
-    const idle = this.accessories.filter(accessory => !this.handlerForAccessory(accessory));
+    const idle = this.accessories.filter(accessory => !isCompanion(accessory) && !this.handlerForAccessory(accessory));
     const fresh = [];
     
     wanted.filter(device => !this.handlers.has(device.deviceId)).forEach((device) => {
@@ -1113,6 +1123,21 @@ class OmletCoopPlatform {
         
         return orphan.accessory;
       });
+      
+      // A companion goes with its feeder. Only feeders that already exist are
+      // checked: fresh ones below create their own companions.
+      const parents = new Set(this.accessories
+        .filter(accessory => !isCompanion(accessory) && !removals.includes(accessory))
+        .map(accessory => accessory.UUID));
+      
+      this.accessories
+        .filter(accessory => isCompanion(accessory) && !parents.has(accessory.context.parentUuid))
+        .forEach((companion) => {
+          if (this.debug) {
+            this.log.info(`Removing "${companion.displayName}": its feeder is gone`);
+          }
+          removals.push(companion);
+        });
       
       if (removals.length > 0) {
         this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, removals);
@@ -2673,44 +2698,61 @@ class FeederAccessory extends OmletDevice {
     }
   }
   
+  findCompanion() {
+    return this.platform.accessories.find(accessory =>
+      accessory.context && accessory.context.role === ROLE_FEED_LEVEL
+      && accessory.context.parentUuid === this.accessory.UUID) || null;
+  }
+  
+  ensureCompanion() {
+    let companion = this.findCompanion();
+    
+    if (companion) {
+      return companion;
+    }
+    
+    const uuid = this.platform.api.hap.uuid.generate(`omlet-multi-feedlevel-${this.accessory.UUID}`);
+    companion = new this.platform.api.platformAccessory(`${this.name} Feed Level`, uuid, this.platform.api.hap.Categories.SENSOR);
+    companion.context.role = ROLE_FEED_LEVEL;
+    companion.context.parentUuid = this.accessory.UUID;
+    companion.getService(hap.Service.AccessoryInformation)
+      .setCharacteristic(hap.Characteristic.Manufacturer, 'Omlet')
+      .setCharacteristic(hap.Characteristic.Model, 'Smart Feeder feed level')
+      .setCharacteristic(hap.Characteristic.SerialNumber, `${this.deviceId}-feed`);
+    
+    this.log.info(`Adding "${this.name} Feed Level" as its own tile`);
+    this.platform.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [companion]);
+    this.platform.accessories.push(companion);
+    this.companionNew = true;
+    
+    return companion;
+  }
+  
+  removeCompanion() {
+    const companion = this.findCompanion();
+    
+    if (!companion) {
+      return;
+    }
+    
+    this.platform.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [companion]);
+    this.platform.accessories = this.platform.accessories.filter(accessory => accessory !== companion);
+  }
+  
   applyFeedServices(enabled) {
     const display = enabled ? this.platform.feedLevelDisplay : 'off';
     
-    if (display !== 'humidity') {
-      this.removeService(this.accessory.getService(hap.Service.HumiditySensor));
-    }
-    if (display !== 'lightbulb') {
-      this.removeService(this.accessory.getService(hap.Service.Lightbulb));
-    }
+    // Before 1.2.0 the level services lived on the feeder itself.
+    this.removeService(this.accessory.getService(hap.Service.HumiditySensor));
+    this.removeService(this.accessory.getService(hap.Service.Lightbulb));
     
     this.levelService = null;
     this.levelBulbService = null;
     
-    if (display === 'humidity') {
-      const level = this.accessory.getService(hap.Service.HumiditySensor)
-        || this.accessory.addService(hap.Service.HumiditySensor);
-      level.setCharacteristic(hap.Characteristic.Name, `${this.name} Feed Level`);
-      level
-        .getCharacteristic(hap.Characteristic.CurrentRelativeHumidity)
-        .onGet(this.getFeedLevel.bind(this));
-      this.feederService.addLinkedService(level);
-      this.levelService = level;
-    }
-    
-    if (display === 'lightbulb') {
-      const bulb = this.accessory.getService(hap.Service.Lightbulb)
-        || this.accessory.addService(hap.Service.Lightbulb);
-      bulb.setCharacteristic(hap.Characteristic.Name, `${this.name} Feed Level`);
-      bulb
-        .getCharacteristic(hap.Characteristic.On)
-        .onGet(this.getFeedBulbOn.bind(this))
-        .onSet(this.revertFeedBulb.bind(this));
-      bulb
-        .getCharacteristic(hap.Characteristic.Brightness)
-        .onGet(this.getFeedLevel.bind(this))
-        .onSet(this.revertFeedBulb.bind(this));
-      this.feederService.addLinkedService(bulb);
-      this.levelBulbService = bulb;
+    if (display === 'humidity' || display === 'lightbulb') {
+      this.applyCompanionService(this.ensureCompanion(), display);
+    } else {
+      this.removeCompanion();
     }
     
     if (!enabled) {
@@ -2727,6 +2769,59 @@ class FeederAccessory extends OmletDevice {
       .onGet(this.getFeedLow.bind(this));
     this.feederService.addLinkedService(low);
     this.lowService = low;
+  }
+  
+  // One service only, so the Home app has nothing to merge it with.
+  applyCompanionService(companion, display) {
+    const drop = (type) => {
+      const service = companion.getService(hap.Service[type]);
+      if (service) {
+        companion.removeService(service);
+        return true;
+      }
+      return false;
+    };
+    
+    const changed = drop(display === 'humidity' ? 'Lightbulb' : 'HumiditySensor');
+    const name = `${this.name} Feed Level`;
+    
+    if (display === 'humidity') {
+      const had = !!companion.getService(hap.Service.HumiditySensor);
+      const level = companion.getService(hap.Service.HumiditySensor)
+        || companion.addService(hap.Service.HumiditySensor);
+      level.setCharacteristic(hap.Characteristic.Name, name);
+      level.setPrimaryService(true);
+      level
+        .getCharacteristic(hap.Characteristic.CurrentRelativeHumidity)
+        .onGet(this.getFeedLevel.bind(this));
+      this.levelService = level;
+      this.publishCompanion(companion, changed || !had);
+      return;
+    }
+    
+    const had = !!companion.getService(hap.Service.Lightbulb);
+    const bulb = companion.getService(hap.Service.Lightbulb)
+      || companion.addService(hap.Service.Lightbulb);
+    bulb.setCharacteristic(hap.Characteristic.Name, name);
+    bulb.setPrimaryService(true);
+    bulb
+      .getCharacteristic(hap.Characteristic.On)
+      .onGet(this.getFeedBulbOn.bind(this))
+      .onSet(this.revertFeedBulb.bind(this));
+    bulb
+      .getCharacteristic(hap.Characteristic.Brightness)
+      .onGet(this.getFeedLevel.bind(this))
+      .onSet(this.revertFeedBulb.bind(this));
+    this.levelBulbService = bulb;
+    this.publishCompanion(companion, changed || !had);
+  }
+  
+  // A companion registered a moment ago is published by that registration.
+  publishCompanion(companion, changed) {
+    if (changed && !this.companionNew) {
+      this.platform.api.updatePlatformAccessories([companion]);
+    }
+    this.companionNew = false;
   }
   
   feedAsBattery() {
