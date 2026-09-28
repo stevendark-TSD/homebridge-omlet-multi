@@ -1,7 +1,7 @@
 {
   "name": "homebridge-omlet-multi",
   "displayName": "Omlet Multi",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Control any number of Omlet Smart Autodoors (with their coop lights) and monitor Omlet Smart Feeders in Apple HomeKit. Fork of homebridge-omlet by cantcodewontcode.",
   "main": "index.js",
   "scripts": {

@@ -41,7 +41,7 @@ function door(id, name, opts) {
     deviceId: id, name: name, deviceType: 'Autodoor',
     state: {
       general: { batteryLevel: opts.battery == null ? 80 : opts.battery, powerSource: opts.mains ? 'external' : 'internal', firmwareVersionCurrent: '1.0.53' },
-      door: { state: opts.door || 'closed', fault: 'none' },
+      door: { state: opts.door || 'closed', fault: 'none', lightLevel: opts.lux == null ? 66 : opts.lux },
       light: opts.light ? { state: 'off' } : undefined
     },
     configuration: { light: { equipped: opts.light ? 1 : 0 } }
@@ -134,8 +134,8 @@ var hap = {
   HapStatusError: function (s) { this.hapStatus = s; this.message = 'HapStatusError ' + s; },
   uuid: { generate: function (s) { return 'uuid:' + s; } }
 };
-['AccessoryInformation', 'GarageDoorOpener', 'Lightbulb', 'Battery', 'ContactSensor', 'HumiditySensor', 'OccupancySensor'].forEach(function (n) { hap.Service[n] = svcType(n); });
-[['Manufacturer'], ['Model'], ['SerialNumber'], ['FirmwareRevision'], ['Name'], ['On'], ['BatteryLevel'], ['ChargingState'], ['StatusLowBattery'], ['ObstructionDetected'], ['CurrentRelativeHumidity'],
+['AccessoryInformation', 'GarageDoorOpener', 'Lightbulb', 'Battery', 'ContactSensor', 'HumiditySensor', 'OccupancySensor', 'LightSensor'].forEach(function (n) { hap.Service[n] = svcType(n); });
+[['Manufacturer'], ['Model'], ['Brightness'], ['CurrentAmbientLightLevel'], ['SerialNumber'], ['FirmwareRevision'], ['Name'], ['On'], ['BatteryLevel'], ['ChargingState'], ['StatusLowBattery'], ['ObstructionDetected'], ['CurrentRelativeHumidity'],
  ['CurrentDoorState', { OPEN: 0, CLOSED: 1, OPENING: 2, CLOSING: 3, STOPPED: 4 }],
  ['TargetDoorState', { OPEN: 0, CLOSED: 1 }],
  ['ContactSensorState', { CONTACT_DETECTED: 0, CONTACT_NOT_DETECTED: 1 }],
@@ -171,7 +171,7 @@ function makeApi() {
     fire: function (e) { return listeners[e] && listeners[e](); },
     registerPlatformAccessories: function (p, n, list) { list.forEach(function (a) { a._plugin = p + '/' + n; registry.push(a); }); },
     unregisterPlatformAccessories: function (p, n, list) { registry = registry.filter(function (a) { return list.indexOf(a) < 0; }); },
-    updatePlatformAccessories: function () {},
+    updatePlatformAccessories: function (list) { api.updates = (api.updates || 0) + 1; },
     registerPlatform: function (p, n, cls) { api._platform = { name: n, cls: cls }; }
   };
   return api;

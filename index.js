@@ -61,8 +61,18 @@ const POLL_STAGGER_MS = 3000;
 // Feed level moves slowly and feeders only check in with Omlet every few minutes.
 const MIN_FEEDER_POLL_MS = 5 * 60 * 1000;
 const DEFAULT_FEED_LOW_THRESHOLD = 20;
+// How a feeder's level is shown. HomeKit has no feed sensor, so each option is a
+// compromise: humidity is read-only but hidden behind Climate in the Home app; a
+// light bulb gets a tile on the main page but is controllable (changes are
+// reverted); battery borrows the feeder's battery tile, so its real battery is not
+// shown; off leaves only Feed Low.
+const FEED_LEVEL_DISPLAYS = ['humidity', 'lightbulb', 'battery', 'off'];
+const LIGHTBULB_REVERT_MS = 500;
 
-const SERVICE_LABELS = { light: 'Coop light', battery: 'Battery', feed: 'Feed level' };
+const SERVICE_LABELS = { light: 'Coop light', battery: 'Battery', feed: 'Feed level', lightLevel: 'Light level sensor' };
+// HomeKit's light sensor takes lux from 0.0001 upwards. Omlet's lightLevel is its
+// own scale (the one the door's open/close light levels use), shown as-is.
+const MIN_AMBIENT_LIGHT = 0.0001;
 
 // Door state vocabulary, confirmed against a live Autodoor (firmware 1.0.53).
 // While moving, the API reports `openpending` / `closepending` - taken from each
@@ -173,6 +183,8 @@ class OmletCoopPlatform {
     this.bearerToken = this.validateToken(config.bearerToken, 'bearerToken');
     this.excludeDevices = this.validateDeviceList(config.excludeDevices, 'excludeDevices');
     this.feedLowThreshold = this.validatePercent(config.feedLowThreshold, 'feedLowThreshold', DEFAULT_FEED_LOW_THRESHOLD);
+    this.feedLevelDisplay = this.validateChoice(config.feedLevelDisplay, 'feedLevelDisplay', FEED_LEVEL_DISPLAYS);
+    this.enableLightLevel = this.validateChoice(config.enableLightLevel, 'enableLightLevel', ['auto', 'off']);
     this.baseUrl = this.validateHostname(config.apiServer) || 'x107.omlet.co.uk';
     this.pollInterval = this.validatePollInterval(config.pollInterval);
     // "auto" (the default, and what an absent setting means) lets the device decide.
@@ -379,6 +391,19 @@ class OmletCoopPlatform {
     return parsed;
   }
 
+  validateChoice(value, fieldName, choices) {
+    if (value === undefined || value === null || value === '') {
+      return choices[0];
+    }
+    
+    if (!choices.includes(value)) {
+      this.log.warn(`Invalid ${fieldName} "${value}", using "${choices[0]}"`);
+      return choices[0];
+    }
+    
+    return value;
+  }
+  
   isExcluded(deviceId) {
     return this.excludeDevices.includes(deviceId);
   }
@@ -1519,6 +1544,67 @@ class OmletDevice {
     }
   }
   
+  // Doors report lightLevel under state.door, feeders under state.feeder.
+  lightLevel(status = this.cachedStatus) {
+    const raw = status?.state?.[this.kind === KIND_FEEDER ? 'feeder' : 'door']?.lightLevel;
+    
+    if (raw === undefined || raw === null || raw === '') {
+      return null;
+    }
+    
+    const level = Number(raw);
+    return Number.isFinite(level) ? Math.max(0, level) : null;
+  }
+  
+  hasLightLevelService() {
+    return !!this.accessory.getService(hap.Service.LightSensor);
+  }
+  
+  desiredLightLevel(status) {
+    return this.platform.enableLightLevel !== 'off' && this.lightLevel(status) !== null;
+  }
+  
+  applyLightLevelService(enabled) {
+    const existing = this.accessory.getService(hap.Service.LightSensor);
+    
+    if (!enabled) {
+      if (existing) {
+        this.primaryService.removeLinkedService(existing);
+        this.accessory.removeService(existing);
+      }
+      this.lightLevelService = null;
+      return;
+    }
+    
+    const service = existing || this.accessory.addService(hap.Service.LightSensor);
+    service.setCharacteristic(hap.Characteristic.Name, `${this.name} Light Level`);
+    service
+      .getCharacteristic(hap.Characteristic.CurrentAmbientLightLevel)
+      .onGet(this.getAmbientLight.bind(this));
+    this.primaryService.addLinkedService(service);
+    this.lightLevelService = service;
+  }
+  
+  getAmbientLight() {
+    const level = this.lightLevel();
+    
+    if (level === null) {
+      throw unavailable();
+    }
+    
+    return Math.max(MIN_AMBIENT_LIGHT, level);
+  }
+  
+  pushLightLevelToHomeKit(status) {
+    const level = this.lightLevel(status);
+    
+    if (this.lightLevelService && level !== null) {
+      this.lightLevelService
+        .getCharacteristic(hap.Characteristic.CurrentAmbientLightLevel)
+        .updateValue(Math.max(MIN_AMBIENT_LIGHT, level));
+    }
+  }
+  
   pushBatteryToHomeKit(status) {
     if (!this.batteryService) {
       return;
@@ -1861,6 +1947,7 @@ class AutodoorAccessory extends OmletDevice {
     // does not flicker away and back on every restart.
     this.applyLightService(platform.enableLight === 'auto' ? this.hasLightService() : platform.enableLight);
     this.applyBatteryService(platform.enableBattery === 'auto' ? this.hasBatteryService() : platform.enableBattery);
+    this.applyLightLevelService(platform.enableLightLevel !== 'off' && this.hasLightLevelService());
     
     this.log.info(`Coop door initialized (light: ${this.describePref(platform.enableLight)}, battery: ${this.describePref(platform.enableBattery)})`);
     
@@ -1958,16 +2045,19 @@ class AutodoorAccessory extends OmletDevice {
   }
   
   reconcileServices(status) {
-    const before = `${this.hasLightService()}|${this.hasBatteryService()}`;
+    const signature = () => `${this.hasLightService()}|${this.hasBatteryService()}|${this.hasLightLevelService()}`;
+    const before = signature();
     
     this.reconcileService('light', this.desiredLight(status),
       () => this.hasLightService(), (v) => this.applyLightService(v));
     this.reconcileService('battery', this.desiredBattery(status),
       () => this.hasBatteryService(), (v) => this.applyBatteryService(v));
+    this.reconcileService('lightLevel', this.desiredLightLevel(status),
+      () => this.hasLightLevelService(), (v) => this.applyLightLevelService(v));
     
     this.firstReconcileDone = true;
     
-    if (before !== `${this.hasLightService()}|${this.hasBatteryService()}`) {
+    if (before !== signature()) {
       // Without this the added or removed service is not published, and the tile
       // only appears (or disappears) after the next Homebridge restart.
       this.platform.api.updatePlatformAccessories([this.accessory]);
@@ -2411,6 +2501,7 @@ class AutodoorAccessory extends OmletDevice {
         }
       }
 
+      this.pushLightLevelToHomeKit(status);
       this.pushBatteryToHomeKit(status);
     } catch (error) {
       this.log.error('[Poll] Failed to push state to HomeKit:', error.message);
@@ -2486,8 +2577,10 @@ class AutodoorAccessory extends OmletDevice {
 // feeder service, so it is expressed with stock sensors:
 //
 //   Contact sensor   the feeder door - "Open" while the hens can get at the feed
-//   Feed Level       a humidity sensor, the only stock service the Home app shows
-//                    as a plain percentage (it shows a droplet icon, sadly)
+//   Feed Level       a humidity sensor by default (read-only, droplet icon, under
+//                    Climate), or a light bulb whose brightness is the level (a
+//                    main-page tile, but controllable - see feedLevelDisplay), or
+//                    not shown at all
 //   Feed Low         an occupancy sensor that trips below feedLowThreshold, so it
 //                    can drive a notification or an automation
 //   Battery          on the same auto rules as the doors
@@ -2522,10 +2615,21 @@ class FeederAccessory extends OmletDevice {
     
     // As with the door's light: keep what the cached accessory had until the first
     // poll says whether this feeder reports a feed level at all.
+    const before = this.serviceSignature();
     this.applyFeedServices(this.hasFeedServices());
-    this.applyBatteryService(platform.enableBattery === 'auto' ? this.hasBatteryService() : platform.enableBattery);
+    this.applyBatteryService(this.feedAsBattery() || platform.enableBattery === 'auto'
+      ? this.hasBatteryService()
+      : platform.enableBattery);
+    this.applyLightLevelService(platform.enableLightLevel !== 'off' && this.hasLightLevelService());
     
-    this.log.info(`Feeder initialized (Feed Low alert threshold: ${platform.feedLowThreshold}%, battery: ${this.describePref(platform.enableBattery)})`);
+    // Changing feedLevelDisplay swaps a cached accessory's services here, before
+    // the first poll, so publish that now. A brand-new accessory is published by
+    // registration instead.
+    if (before !== this.serviceSignature() && platform.accessories.includes(accessory)) {
+      platform.api.updatePlatformAccessories([accessory]);
+    }
+    
+    this.log.info(`Feeder initialized (Feed Low alert threshold: ${platform.feedLowThreshold}%, feed level shown as: ${platform.feedLevelDisplay}, battery: ${this.describePref(platform.enableBattery)})`);
     
     this.startPolling(startDelay);
   }
@@ -2550,35 +2654,73 @@ class FeederAccessory extends OmletDevice {
     return level < this.platform.feedLowThreshold;
   }
   
+  // Feed Low is present in every display mode, so it is what says "this feeder
+  // reports a feed level".
   hasFeedServices() {
-    return !!this.accessory.getService(hap.Service.HumiditySensor);
+    return !!this.accessory.getService(hap.Service.OccupancySensor);
+  }
+  
+  serviceSignature() {
+    return ['HumiditySensor', 'Lightbulb', 'OccupancySensor', 'Battery', 'LightSensor']
+      .map(type => (this.accessory.getService(hap.Service[type]) ? type : ''))
+      .join('|');
+  }
+  
+  removeService(service) {
+    if (service) {
+      this.feederService.removeLinkedService(service);
+      this.accessory.removeService(service);
+    }
   }
   
   applyFeedServices(enabled) {
-    const existingLevel = this.accessory.getService(hap.Service.HumiditySensor);
-    const existingLow = this.accessory.getService(hap.Service.OccupancySensor);
+    const display = enabled ? this.platform.feedLevelDisplay : 'off';
+    
+    if (display !== 'humidity') {
+      this.removeService(this.accessory.getService(hap.Service.HumiditySensor));
+    }
+    if (display !== 'lightbulb') {
+      this.removeService(this.accessory.getService(hap.Service.Lightbulb));
+    }
+    
+    this.levelService = null;
+    this.levelBulbService = null;
+    
+    if (display === 'humidity') {
+      const level = this.accessory.getService(hap.Service.HumiditySensor)
+        || this.accessory.addService(hap.Service.HumiditySensor);
+      level.setCharacteristic(hap.Characteristic.Name, `${this.name} Feed Level`);
+      level
+        .getCharacteristic(hap.Characteristic.CurrentRelativeHumidity)
+        .onGet(this.getFeedLevel.bind(this));
+      this.feederService.addLinkedService(level);
+      this.levelService = level;
+    }
+    
+    if (display === 'lightbulb') {
+      const bulb = this.accessory.getService(hap.Service.Lightbulb)
+        || this.accessory.addService(hap.Service.Lightbulb);
+      bulb.setCharacteristic(hap.Characteristic.Name, `${this.name} Feed Level`);
+      bulb
+        .getCharacteristic(hap.Characteristic.On)
+        .onGet(this.getFeedBulbOn.bind(this))
+        .onSet(this.revertFeedBulb.bind(this));
+      bulb
+        .getCharacteristic(hap.Characteristic.Brightness)
+        .onGet(this.getFeedLevel.bind(this))
+        .onSet(this.revertFeedBulb.bind(this));
+      this.feederService.addLinkedService(bulb);
+      this.levelBulbService = bulb;
+    }
     
     if (!enabled) {
-      [existingLevel, existingLow].forEach((service) => {
-        if (service) {
-          this.feederService.removeLinkedService(service);
-          this.accessory.removeService(service);
-        }
-      });
-      this.levelService = null;
+      this.removeService(this.accessory.getService(hap.Service.OccupancySensor));
       this.lowService = null;
       return;
     }
     
-    const level = existingLevel || this.accessory.addService(hap.Service.HumiditySensor);
-    level.setCharacteristic(hap.Characteristic.Name, `${this.name} Feed Level`);
-    level
-      .getCharacteristic(hap.Characteristic.CurrentRelativeHumidity)
-      .onGet(this.getFeedLevel.bind(this));
-    this.feederService.addLinkedService(level);
-    this.levelService = level;
-    
-    const low = existingLow || this.accessory.addService(hap.Service.OccupancySensor);
+    const low = this.accessory.getService(hap.Service.OccupancySensor)
+      || this.accessory.addService(hap.Service.OccupancySensor);
     low.setCharacteristic(hap.Characteristic.Name, `${this.name} Feed Low`);
     low
       .getCharacteristic(hap.Characteristic.OccupancyDetected)
@@ -2587,17 +2729,102 @@ class FeederAccessory extends OmletDevice {
     this.lowService = low;
   }
   
+  feedAsBattery() {
+    return this.platform.feedLevelDisplay === 'battery';
+  }
+  
+  // In battery display mode the Battery service carries the feed level, so it is
+  // wanted whenever the feeder reports one, whatever enableBattery says.
+  desiredBattery(status) {
+    if (this.feedAsBattery()) {
+      return this.feedLevel(status) !== null;
+    }
+    return super.desiredBattery(status);
+  }
+  
+  applyBatteryService(enabled) {
+    super.applyBatteryService(enabled);
+    
+    if (this.batteryService && this.feedAsBattery()) {
+      this.batteryService.setCharacteristic(hap.Characteristic.Name, `${this.name} Feed Level`);
+    }
+  }
+  
+  async getBatteryLevel() {
+    return this.feedAsBattery() ? this.getFeedLevel() : super.getBatteryLevel();
+  }
+  
+  async getStatusLowBattery() {
+    if (!this.feedAsBattery()) {
+      return super.getStatusLowBattery();
+    }
+    return this.isFeedLow(this.getFeedLevel()) ? 1 : 0;
+  }
+  
+  pushBatteryToHomeKit(status) {
+    if (!this.feedAsBattery()) {
+      super.pushBatteryToHomeKit(status);
+      return;
+    }
+    
+    const level = this.feedLevel(status);
+    if (this.batteryService && level !== null) {
+      this.batteryService.getCharacteristic(hap.Characteristic.BatteryLevel).updateValue(level);
+      this.batteryService.getCharacteristic(hap.Characteristic.StatusLowBattery).updateValue(this.isFeedLow(level) ? 1 : 0);
+    }
+  }
+  
+  // An empty feeder reads as a light that is off; anything else is on, at a
+  // brightness equal to the feed level.
+  getFeedBulbOn() {
+    return this.getFeedLevel() > 0;
+  }
+  
+  // The level is not something HomeKit can set. A tap, a brightness drag, or a
+  // "turn off all the lights" scene is accepted - rejecting it would show an error
+  // - and then put back to the real reading a moment later.
+  revertFeedBulb() {
+    if (this.debug) {
+      this.log.info('[Feeder] Ignoring a change to the Feed Level light; it only shows the feed level');
+    }
+    
+    setTimeout(() => this.pushFeedLevel(), LIGHTBULB_REVERT_MS);
+  }
+  
+  pushFeedLevel(status = this.cachedStatus) {
+    const level = this.feedLevel(status);
+    
+    if (level === null) {
+      return level;
+    }
+    
+    if (this.levelService) {
+      this.levelService.getCharacteristic(hap.Characteristic.CurrentRelativeHumidity).updateValue(level);
+    }
+    if (this.levelBulbService) {
+      this.levelBulbService.getCharacteristic(hap.Characteristic.On).updateValue(level > 0);
+      this.levelBulbService.getCharacteristic(hap.Characteristic.Brightness).updateValue(level);
+    }
+    if (this.lowService) {
+      this.lowService.getCharacteristic(hap.Characteristic.OccupancyDetected).updateValue(this.getFeedLow());
+    }
+    
+    return level;
+  }
+  
   reconcileServices(status) {
-    const before = `${this.hasFeedServices()}|${this.hasBatteryService()}`;
+    const before = this.serviceSignature();
     
     this.reconcileService('feed', this.feedLevel(status) !== null,
       () => this.hasFeedServices(), (v) => this.applyFeedServices(v));
     this.reconcileService('battery', this.desiredBattery(status),
       () => this.hasBatteryService(), (v) => this.applyBatteryService(v));
+    this.reconcileService('lightLevel', this.desiredLightLevel(status),
+      () => this.hasLightLevelService(), (v) => this.applyLightLevelService(v));
     
     this.firstReconcileDone = true;
     
-    if (before !== `${this.hasFeedServices()}|${this.hasBatteryService()}`) {
+    if (before !== this.serviceSignature()) {
       this.platform.api.updatePlatformAccessories([this.accessory]);
     }
   }
@@ -2700,16 +2927,13 @@ class FeederAccessory extends OmletDevice {
           .updateValue(this.getFeederFault());
       }
       
-      const level = this.feedLevel(status);
-      if (level !== null && this.levelService && this.lowService) {
-        this.levelService.getCharacteristic(hap.Characteristic.CurrentRelativeHumidity).updateValue(level);
-        this.lowService.getCharacteristic(hap.Characteristic.OccupancyDetected).updateValue(this.getFeedLow());
-      }
+      const level = this.pushFeedLevel(status);
       
       if (this.debug) {
         this.log.info('[Poll] Feeder:', state, 'feed level:', level);
       }
       
+      this.pushLightLevelToHomeKit(status);
       this.pushBatteryToHomeKit(status);
     } catch (error) {
       this.log.error('[Poll] Failed to push state to HomeKit:', error.message);

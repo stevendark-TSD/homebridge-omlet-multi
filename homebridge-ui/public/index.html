@@ -256,6 +256,17 @@
       </div>
       
       <div class="form-group">
+        <label for="feedLevelDisplay">Feed Level Display</label>
+        <select class="form-control" id="feedLevelDisplay">
+          <option value="humidity" selected>Humidity sensor</option>
+          <option value="lightbulb">Light bulb</option>
+          <option value="battery">Battery</option>
+          <option value="off">Do not display</option>
+        </select>
+        <small id="feedLevelDisplayHelp"></small>
+      </div>
+      
+      <div class="form-group">
         <label for="enableLight">Coop Light Accessories</label>
         <select class="form-control" id="enableLight">
           <option value="auto" selected>Auto-discover</option>
@@ -269,6 +280,14 @@
           <option value="auto" selected>Automatic by power type</option>
           <option value="on">Always show</option>
           <option value="off">Always hide</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="enableLightLevel">Light Level Sensors</label>
+        <select class="form-control" id="enableLightLevel">
+          <option value="auto" selected>Auto-discover</option>
+          <option value="off">Do not display</option>
         </select>
       </div>
       
@@ -391,13 +410,34 @@ function togglePasswordVisibility() {
     document.getElementById('feedLowThreshold').value = currentConfig.feedLowThreshold;
   }
   
+  const FEED_DISPLAY_HELP = {
+    humidity: 'HomeKit has no feed sensor. Shown as a humidity sensor: read-only, with a droplet icon, under Climate in the Home app.',
+    lightbulb: 'Shown as a light bulb whose brightness is the feed level, so it gets a tile on the Home page. Switching it off or dragging it is undone, but scenes that turn off all lights will try to.',
+    battery: 'Shown on the feeder\'s battery tile, with a low warning below the Feed Low threshold. The feeder\'s own battery level is not shown in this mode.',
+    off: 'No feed level tile. Feed Low still triggers below the threshold.'
+  };
+  const feedDisplaySelect = document.getElementById('feedLevelDisplay');
+  if (FEED_DISPLAY_HELP[currentConfig.feedLevelDisplay]) {
+    feedDisplaySelect.value = currentConfig.feedLevelDisplay;
+  }
+  function showFeedDisplayHelp() {
+    document.getElementById('feedLevelDisplayHelp').textContent = FEED_DISPLAY_HELP[feedDisplaySelect.value] || '';
+  }
+  showFeedDisplayHelp();
+  feedDisplaySelect.addEventListener('change', showFeedDisplayHelp);
+  document.getElementById('enableLightLevel').value = (currentConfig.enableLightLevel === 'off') ? 'off' : 'auto';
+  
   // Device IDs left out of HomeKit. Everything else on the account is added.
   const excludedDevices = new Set(Array.isArray(currentConfig.excludeDevices) ? currentConfig.excludeDevices : []);
   
   // Always sent, even when empty: updatePluginConfig merges, so leaving a key out
   // would keep a stale exclusion list rather than clearing it.
   function deviceSettings() {
-    const settings = { excludeDevices: Array.from(excludedDevices) };
+    const settings = {
+      excludeDevices: Array.from(excludedDevices),
+      feedLevelDisplay: document.getElementById('feedLevelDisplay').value,
+      enableLightLevel: document.getElementById('enableLightLevel').value
+    };
     const threshold = parseInt(document.getElementById('feedLowThreshold').value, 10);
     
     if (!isNaN(threshold)) {
@@ -467,6 +507,8 @@ function togglePasswordVisibility() {
   document.getElementById('apiServer').addEventListener('change', updateConfigFromForm);
   document.getElementById('bearerToken').addEventListener('change', updateConfigFromForm);
   document.getElementById('feedLowThreshold').addEventListener('change', updateConfigFromForm);
+  document.getElementById('feedLevelDisplay').addEventListener('change', updateConfigFromForm);
+  document.getElementById('enableLightLevel').addEventListener('change', updateConfigFromForm);
   document.getElementById('pollInterval').addEventListener('change', updateConfigFromForm);
   document.getElementById('enableLight').addEventListener('change', updateConfigFromForm);
   document.getElementById('enableBattery').addEventListener('change', updateConfigFromForm);

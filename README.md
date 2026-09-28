@@ -11,13 +11,32 @@ Each **coop door** becomes one accessory, named after the door in the Omlet app,
 - a garage door control for opening and closing, which shows an obstruction when the door reports it is blocked
 - a light, if a Coop Light is fitted to that door
 - a battery level, when the door is running on batteries
+- a light level sensor, showing the light level the door opens and closes by
 
 Each **feeder** becomes one accessory. Omlet's API cannot control feeders, so everything here is read-only:
 
 - a contact sensor for the feeder door, showing **Open** while the hens can reach the feed, with a fault warning if the feeder reports one
-- **Feed Level**, a percentage. HomeKit has no feed sensor, so this uses a humidity sensor and the Home app shows it with a droplet icon
+- **Feed Level**, a percentage. HomeKit has no feed sensor, so you choose how it is shown (see below)
 - **Feed Low**, an occupancy sensor that triggers when the level drops below the Feed Low Threshold. Use it for a notification or an automation
 - a battery level, when the feeder is running on batteries
+- a light level sensor
+
+### How Feed Level is shown
+
+Apple does not allow new tile types in the Home app, so the feed level has to borrow an existing one. Pick the trade-off that suits you under **Feed Level Display**:
+
+| Option | In the Home app | Catch |
+| --- | --- | --- |
+| Humidity sensor (default) | A percentage with a droplet icon, under **Climate** | Not on the main Home page unless you add it to Favourites |
+| Light bulb | A tile on the main page; the brightness is the feed level, and an empty feeder shows as off | It can be tapped or dragged. The plugin undoes any change within a second, but "turn off all the lights" scenes and Siri will try to switch it off |
+| Battery | The level on the feeder's battery tile, with a low warning below the Feed Low Threshold | The feeder's real battery level is not shown in this mode |
+| Do not display | No level tile | Feed Low still works |
+
+Whichever you choose, rename the tile in the Home app if its name is not clear to you. Feed Low works in every mode, so turn on its notifications to be told when to top up.
+
+### Light levels
+
+Doors and feeders both report a light level. It is shown as a light sensor, which HomeKit measures in lux, but the number is Omlet's own light scale, the same one used for a door's open and close light levels in the Omlet app. It is not a true lux reading. Set **Light Level Sensors** to **Do not display** to hide them.
 
 Omlet fans are listed in the log but not added yet.
 
@@ -77,6 +96,8 @@ Rarely needed:
 - **API Server**: Override the default API server hostname (if ever needed)
 - **Poll Interval**: How often coop doors are checked (30 to 300 seconds). Feeders are checked every 5 minutes at most, as their feed level changes slowly
 - **Feed Low Threshold**: The feed level below which a feeder reports Feed Low (default 20%)
+- **Feed Level Display**: How feed level appears in HomeKit: humidity sensor, light bulb, battery, or not at all. See above
+- **Light Level Sensors**: Auto-discover, or do not display
 - **Debug Mode**: Enable detailed logging for troubleshooting
 
 ### Where credentials are kept
@@ -108,6 +129,8 @@ If you prefer to edit `config.json` directly:
       "enableLight": "auto",
       "excludeDevices": [],
       "feedLowThreshold": 20,
+      "feedLevelDisplay": "humidity",
+      "enableLightLevel": "auto",
       "debug": false
     }
   ]

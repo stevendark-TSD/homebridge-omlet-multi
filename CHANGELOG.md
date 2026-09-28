@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.0] - 2026-09-28
+
+### Feeders
+- New **Feed Level Display** setting (`feedLevelDisplay`): show the feed level as a humidity sensor (default, unchanged), a light bulb whose brightness is the level (a tile on the Home page; any change is undone), the feeder's battery tile (with a low warning below the Feed Low threshold; the real battery is not shown), or not at all. Feed Low is kept in every mode.
+- Changing the setting updates existing feeders on restart; no need to remove them from HomeKit.
+
+### Light levels
+- Doors and feeders now have a light level sensor, showing the light level they report, in Omlet's own units. Turn them off with **Light Level Sensors** (`enableLightLevel`).
+
 ## [1.0.2] - 2026-09-26
 
 - Settings page is readable with the Homebridge dark theme. Its light panels inherited the theme's white text, so most of the page was white on white.

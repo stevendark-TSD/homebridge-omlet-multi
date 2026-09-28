@@ -94,6 +94,38 @@
         "maximum": 100,
         "description": "Feeders report Feed Low below this level"
       },
+      "feedLevelDisplay": {
+        "title": "Feed Level Display",
+        "type": "string",
+        "default": "humidity",
+        "oneOf": [
+          {
+            "title": "Humidity sensor (read-only, under Climate in the Home app)",
+            "enum": [
+              "humidity"
+            ]
+          },
+          {
+            "title": "Light bulb (tile on the Home page; brightness is the level, changes are undone)",
+            "enum": [
+              "lightbulb"
+            ]
+          },
+          {
+            "title": "Battery (level on the battery tile; the feeder's own battery is not shown)",
+            "enum": [
+              "battery"
+            ]
+          },
+          {
+            "title": "Do not display (Feed Low only)",
+            "enum": [
+              "off"
+            ]
+          }
+        ],
+        "description": "HomeKit has no feed level sensor, so the level is shown using one of these."
+      },
       "debug": {
         "title": "Debug Mode",
         "type": "boolean",
@@ -143,6 +175,26 @@
             ]
           }
         ]
+      },
+      "enableLightLevel": {
+        "title": "Light Level Sensors",
+        "type": "string",
+        "default": "auto",
+        "oneOf": [
+          {
+            "title": "Auto-discover",
+            "enum": [
+              "auto"
+            ]
+          },
+          {
+            "title": "Do not display",
+            "enum": [
+              "off"
+            ]
+          }
+        ],
+        "description": "Light level reported by each door and feeder, in Omlet's own units"
       }
     }
   },
@@ -162,8 +214,10 @@
         "pollInterval",
         "excludeDevices",
         "feedLowThreshold",
+        "feedLevelDisplay",
         "enableLight",
         "enableBattery",
+        "enableLightLevel",
         "debug"
       ]
     }
